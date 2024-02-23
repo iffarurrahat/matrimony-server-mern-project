@@ -7,7 +7,7 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 
-// middleware
+// middlewareverifyToken
 const corsOptions = {
     origin: ['http://localhost:5173', 'http://localhost:5174'],
     credentials: true,
@@ -17,7 +17,7 @@ app.use(cors(corsOptions))
 app.use(express.json())
 
 const verifyToken = async (req, res, next) => {
-    const token = req.cookies?.token
+    const token = req.cookies.token
     console.log(token)
     if (!token) {
         return res.status(401).send({ message: 'unauthorized access' })
@@ -31,7 +31,6 @@ const verifyToken = async (req, res, next) => {
         next()
     })
 }
-
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(process.env.DB_URI, {
@@ -49,6 +48,18 @@ async function run() {
         const reviewCollection = client.db("matrimonyDB").collection("reviews");
         const usersCollection = client.db("matrimonyDB").collection("users");
         const candidatesCollection = client.db("matrimonyDB").collection("candidates");
+
+        // Role Verifications middleware
+        // For admins
+        const verifyAdmin = async (req, res, next) => {
+            const user = req.user;
+            console.log('user form verify admin----->', user);
+            const query = { email: user?.email }
+            const result = await usersCollection.findOne(query)
+            if (!result || result?.role !== 'admin')
+                return res.status(401).send({ message: 'unauthorized access' })
+            next()
+        }
 
         // <-!---- reviews get---->
         app.get('/reviews', async (req, res) => {
@@ -112,7 +123,7 @@ async function run() {
         })
 
         // Get all users
-        app.get('/users', async (req, res) => {
+        app.get('/users',async (req, res) => {
             const result = await usersCollection.find().toArray();
             res.send(result)
         })
@@ -154,6 +165,38 @@ async function run() {
             res.send(result);
         })
 
+        // update-info form candidate db
+        app.put('/candidate/:id', async (req, res) => {
+            const id = req.params.id;
+            const info = req.body;
+            const filter = { _id: new ObjectId(id) }
+            const option = { upsert: true }
+            const updatedDoc = {
+                $set: {
+                    name: info.name,
+                    image: info.image,
+                    fatherName: info.fatherName,
+                    motherName: info.motherName,
+                    birthDate: info.birthDate,
+                    candidateHeight: info.candidateHeight,
+                    candidateWeight: info.candidateWeight,
+                    candidateAge: info.candidateAge,
+                    occupation: info.occupation,
+                    race: info.race,
+                    gender: info.gender,
+                    permanentAddress: info.permanentAddress,
+                    presentAddress: info.presentAddress,
+                    phone: info.phone,
+                    expectedPartnerHeight: info.expectedPartnerHeight,
+                    expectedPartnerWeight: info.expectedPartnerWeight,
+                    expectedPartnerAge: info.expectedPartnerAge,
+                    host: info.host,
+                }
+            }
+            const result = await candidatesCollection.updateOne(filter, updatedDoc, option)
+            res.send(result)
+        })
+
         // Save a candidates in database
         app.post('/candidates', async (req, res) => {
             const candidate = req.body;
@@ -161,7 +204,12 @@ async function run() {
             res.send(result);
         })
 
-
+        app.delete('/candidates/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await candidatesCollection.deleteOne(query)
+            res.send(result)
+        })
 
 
         // Send a ping to confirm a successful connection
